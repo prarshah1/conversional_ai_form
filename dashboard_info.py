@@ -11,13 +11,9 @@ class DashboardInfo(BaseModel):
         enum=["IT", "HR", "Sales", "Data Science"],
         description="Which team is the dashboard for",
     )
-    analysis_goal: str = Field(
-        None,
-        description="Enter the analysis to be done with data to create the dashboard",
-    )
     dashboard_outcome: str = Field(
         None,
-        description="Target outcome, reason for which we are creating the dashboard",
+        description="Target outcome, reason for which we are creating the dashboard or analysis goal",
     )
     performance_metrics: str = Field(
         None,
