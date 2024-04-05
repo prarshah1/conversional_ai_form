@@ -25,7 +25,7 @@ class DashboardInfo(BaseModel):
     )
     additional_information: str = Field(
         None,
-        description="Optional additional information",
+        description="Optional additional information, or any other information that does not fit other fields goes here ",
     )
     requester: str = Field(
         None,
