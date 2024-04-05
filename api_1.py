@@ -14,8 +14,6 @@ os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 st.set_page_config(page_title='Conversation AI Form')
 st.title('🦜🔗 Conversation AI Form')
 
-llm = None
-
 _FIRST_MESSAGE = "Hello there!, How can I help you today?"
 _DEFAULT_TEMPLATE = """
 You are an interactive conversational chatbot collecting specs for dashboard creation.
@@ -43,39 +41,56 @@ Information to ask for (do not ask as a list):
 ### ask_for list: ask_for_list
 
 """
+
 if "dashboard_specs" not in st.session_state:
     st.session_state.dashboard_specs = DashboardInfo()
+
+if "llm" not in st.session_state:
+    st.session_state.llm = ChatOpenAI(temperature=0)
+
+if "memories" not in st.session_state:
+    st.session_state.memories = ConversationBufferMemory(k=3)
+
+if "ask_for" not in st.session_state:
+    st.session_state.ask_for = list(st.session_state.dashboard_specs.__fields__.keys())
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": _FIRST_MESSAGE}
     ]
 
+if "chain" not in st.session_state:
+    st.session_state.chain = create_tagging_chain_pydantic(DashboardInfo, st.session_state.llm)
 
-def check_what_is_empty(user_peronal_details):
+def check_what_is_empty():
     ask_for = []
     # Check if fields are empty
-    for field, value in user_peronal_details.dict().items():
+    for field, value in st.session_state.dashboard_specs.dict().items():
         if value in [None, "", 0]:  # You can add other 'empty' conditions as per your requirements
             print(f"Field '{field}' is empty.")
             ask_for.append(f'{field}')
     return ask_for
 
 
-def add_non_empty_details(current_details: DashboardInfo, new_details: DashboardInfo):
+def add_non_empty_details(new_details: DashboardInfo):
     non_empty_details = {k: v for k, v in new_details.dict().items() if v not in [None, ""]}
-    updated_details = current_details.copy(update=non_empty_details)
-    return updated_details
+    for field in non_empty_details.keys():
+        if eval(f"new_details.{field}") is not None:
+            existing_field_value = eval(f"st.session_state.dashboard_specs.{field}")
+            print(f"Existing field value: {existing_field_value}")
+            if existing_field_value is None:
+                exec(f"st.session_state.dashboard_specs.{field} = new_details.{field}")
+            else:
+                exec(f"""st.session_state.dashboard_specs.{field} = st.session_state.dashboard_specs.{field} + ", (and) " + new_details.{field}""")
+    return
 
 
-def filter_response(text_input, user_details):
-    chain = create_tagging_chain_pydantic(DashboardInfo, st.session_state.llm)
-    res = chain.run(text_input)
-    st.write("\t\t\t\tLogs: RES " + str(res))
-    # add filtered info to the
-    user_details = add_non_empty_details(user_details, res)
-    ask_for = check_what_is_empty(user_details)
-    return user_details, ask_for
+def filter_response(text_input):
+    res = st.session_state.chain.run(text_input)
+    add_non_empty_details(res)
+    st.write("\t\t\t\tLogs: RES " + str(st.session_state.dashboard_specs))
+    ask_for = check_what_is_empty()
+    return ask_for
 
 
 def ask_for_info(ask_for=list(st.session_state.dashboard_specs.__fields__.keys()), memories=None, input=""):
@@ -103,27 +118,23 @@ def write_message(role, content):
         st.write(f"{content}")
 
 
-if "llm" not in st.session_state:
-    st.session_state.llm = ChatOpenAI(temperature=0)
+def main():
+    if user_input := st.chat_input("Say Something..."):
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
 
-if "memories" not in st.session_state:
-    st.session_state.memories = ConversationBufferMemory(k=3)
+        if st.session_state.ask_for:
+            bot_question = ask_for_info(ask_for=st.session_state.ask_for, memories=st.session_state.memories,
+                                        input=str(user_input))
+            st.session_state.messages.append({"role": "assistant", "content": bot_question})
+            write_message("assistant", bot_question)
+            st.session_state.ask_for = filter_response(user_input)
+        else:
+            st.stop()
 
-if "ask_for" not in st.session_state:
-    st.session_state.ask_for = list(st.session_state.dashboard_specs.__fields__.keys())
 
 print("Starting ...")
 write_messages()
+main()
 
-if user_input := st.chat_input("Say Something..."):
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    if st.session_state.ask_for:
-        bot_question = ask_for_info(ask_for=st.session_state.ask_for, memories=st.session_state.memories, input=str(user_input))
-        st.session_state.messages.append({"role": "assistant", "content": bot_question})
-        write_message("assistant", bot_question)
-        st.session_state.dashboard_specs, ask_for = filter_response(user_input, st.session_state.dashboard_specs)
-    else:
-        st.stop()

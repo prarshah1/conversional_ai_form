@@ -15,13 +15,13 @@ class DashboardInfo(BaseModel):
         None,
         description="Enter the analysis to be done with data to create the dashboard",
     )
-    business_outcome: str = Field(
+    dashboard_outcome: str = Field(
         None,
-        description="Target business outcome",
+        description="Target outcome, reason for which we are creating the dashboard",
     )
-    metrics: str = Field(
+    performance_metrics: str = Field(
         None,
-        description="Dimensions or Metrics needed for dashboard with respect to the specified requirements",
+        description="Array or list of Dimensions or Metrics needed for dashboard acceptance criteria, also can be called performance metrics. It can be list/array of multiple acceptance criteria",
     )
     additional_information: str = Field(
         None,
