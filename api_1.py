@@ -75,12 +75,12 @@ def check_what_is_empty():
 def add_non_empty_details(new_details: DashboardInfo):
     non_empty_details = {k: v for k, v in new_details.dict().items() if v not in [None, ""]}
     for field in non_empty_details.keys():
-        if eval(f"new_details.{field}") is not None:
-            existing_field_value = eval(f"st.session_state.dashboard_specs.{field}")
-            print(f"Existing field value: {existing_field_value}")
+        new_field_value = eval(f"new_details.{field}")
+        existing_field_value = eval(f"st.session_state.dashboard_specs.{field}")
+        if new_field_value is not None:
             if existing_field_value is None:
                 exec(f"st.session_state.dashboard_specs.{field} = new_details.{field}")
-            else:
+            elif existing_field_value != new_field_value:
                 exec(f"""st.session_state.dashboard_specs.{field} = st.session_state.dashboard_specs.{field} + ", (and) " + new_details.{field}""")
     return
 
