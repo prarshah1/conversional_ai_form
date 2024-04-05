@@ -24,8 +24,8 @@ class DashboardInfo(BaseModel):
         description="Array or list of Dimensions or Metrics needed for dashboard acceptance criteria, also can be called performance metrics. It can be list/array of multiple acceptance criteria",
     )
     additional_information: str = Field(
-        None,
-        description="Optional additional information, or any other information that does not fit other fields goes here ",
+        "No",
+        description="Optional additional information, or any other information that does not fit other fields goes here, ele it will be 'No' ",
     )
     requester: str = Field(
         None,
