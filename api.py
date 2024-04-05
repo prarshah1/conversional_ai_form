@@ -6,25 +6,25 @@ from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.memory import MongoDBChatMessageHistory
 from langchain.prompts.prompt import PromptTemplate
-from pydantic import BaseModel, Field
 from streamlit_chat import message
 from dotenv import load_dotenv
+from dashboard_info import DashboardInfo
 
 load_dotenv()
 # setup up mongodb client
-mongodb_url = os.getenv("MONGODB_URL")
-db_name = os.getenv("DB_NAME")
-db_user = os.getenv("DB_USER")
-db_password = os.getenv("DB_PASSWORD")
-db_host = os.getenv("DB_HOST")
-db_port = os.getenv("DB_PORT")
 
 # setup openai
-os.environ["OPENAI_API_KEY"] = ""
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 llm = None
 
-_DEFAULT_TEMPLATE = """You are an interactive conversational chatbot prepared by Learn-tube AI. Your goal is to collect user information in a conversational and non-intrusive manner, one piece at a time. When asking for details, explain why you need them, and be persuasive yet empathetic. Build rapport by transitioning into small talk when appropriate, but aim to gather data smoothly as the conversation progresses. If a user hesitates or is unsure, provide reassurance, offer alternatives, and if the user wishes to correct or update their details, be flexible and handle it trustworthily. If no information is needed, thank the user and ask how you can further assist them.
+_DEFAULT_TEMPLATE = """
+You are an interactive conversational chatbot collecting specs for dashboard creation.
+Your goal is to collect user information in a conversational and non-intrusive manner, one piece at a time.
+When asking for details, explain why you need them, and be persuasive yet empathetic.
+Build rapport by transitioning into small talk when appropriate, but aim to gather data smoothly as the conversation progresses.
+If a user hesitates or is unsure, provide reassurance, offer alternatives, and if the user wishes to correct or update their details, be flexible and handle it trustworthily, be polite.
+If no information is needed, thank the user and tell them their dashboard is ready.
 
 Conversation Workflow:
 1. Explain the need for collecting information.
@@ -45,57 +45,15 @@ Information to ask for (do not ask as a list):
 Available information of user: avl_info_list
 
 """
+if "user_information" not in st.session_state:
+    st.session_state['dashboard_specs'] = DashboardInfo()
 
 
 def update_customer_table(session_id: object, data: object) -> object:
-    conn = psycopg2.connect(database=db_name, user=db_user, password=db_password, host=db_host, port=db_port)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE customer SET name = %s, city = %s, email = %s WHERE id = %s",
-                   (data['name'], data['city'], data['email'], session_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    st.session_state['dashboard_specs'] = st.session_state['dashboard_specs'].add(data)
 
 
-def check_details_from_db(session_id: object) -> object:
-    conn = psycopg2.connect(database=db_name, user=db_user, password=db_password, host=db_host, port=db_port)
-    cursor = conn.cursor()
-
-    # First, let's check if the session_id exists in the customer table.
-    cursor.execute("SELECT * FROM customer WHERE id = %s", (session_id,))
-    existing_row = cursor.fetchone()
-
-    if existing_row:
-        # If a row with the session_id exists, you can fetch the entire row.
-        return dict(zip([col.name for col in cursor.description], existing_row))
-    else:
-        # If the session_id doesn't exist, create a new row.
-        cursor.execute("INSERT INTO customer (id) VALUES (%s) RETURNING *", (session_id,))
-        new_row = cursor.fetchone()
-        conn.commit()
-        return dict(zip([col.name for col in cursor.description], new_row))
-
-    cursor.close()
-    conn.close()
-
-
-# Define the PersonalDetails Pydantic model
-class PersonalDetails(BaseModel):
-    name: str = Field(
-        None,
-        description="The human name of the user.",
-    )
-    city: str = Field(
-        None,
-        description="The name of the city where someone lives",
-    )
-    email: str = Field(
-        None,
-        description="an email address that the person associates as theirs",
-    )
-
-
-ner_chain = None
+# form_chain = None
 
 
 # Define a function to check which fields are empty
@@ -108,72 +66,45 @@ def check_what_is_empty(user_personal_details: object) -> object:
 
 
 # Define a function to update the non-empty details
-def add_non_empty_details(current_details: PersonalDetails, new_details: PersonalDetails) -> object:
+def add_non_empty_details(current_details: DashboardInfo, new_details: DashboardInfo) -> object:
     non_empty_details = {k: v for k, v in new_details.dict().items() if v not in [None, ""]}
     updated_details = current_details.copy(update=non_empty_details)
     return updated_details
 
 
 def conversation_chat(input: object, session_id: object, llm=llm) -> object:
-    if session_id:
-        existing_info_from_db = check_details_from_db(session_id)
-        existing_info_of_user = PersonalDetails(**existing_info_from_db)
-    else:
-        existing_info_of_user = PersonalDetails()
+    # if session_id:
+    #     existing_info_from_db = check_details_from_db(session_id)
+    #     existing_info_of_user = DashboardInfo(**existing_info_from_db)
+    # else:
+    existing_info_of_user = DashboardInfo()
 
-    message_history = MongoDBChatMessageHistory(
-        connection_string=mongodb_url, session_id=session_id
-    )
-    ner_chain = create_tagging_chain_pydantic(PersonalDetails, llm)
-    extractions = ner_chain.run(input)  # Extract information using your NER chain
+    # message_history = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    form_chain = create_tagging_chain_pydantic(DashboardInfo, llm)
+    extractions = form_chain.run(input)  # Extract information using your NER chain
     existing_info_of_user = add_non_empty_details(existing_info_of_user, extractions)
     existing_info_of_str = ", ".join(f"{k}={v}" for k, v in existing_info_of_user.dict().items() if v not in [None, ""])
     ask_for = check_what_is_empty(existing_info_of_user)
     update_customer_table(session_id, existing_info_of_user.dict())
     memories = ConversationBufferMemory(k=3)
 
-    if len(message_history.messages):
-        memories.save_context(
-            {"input": message_history.messages[0].content},
-            {"output": message_history.messages[1].content}
+    PROMPT = PromptTemplate(
+        input_variables=["history", "input"],
+        template=_DEFAULT_TEMPLATE.replace("ask_for_list", f"{ask_for}").replace("avl_info_list",
+                                                                                 f"{existing_info_of_str}"),
         )
-        PROMPT = PromptTemplate(
-            input_variables=["history", "input"],
-            template=_DEFAULT_TEMPLATE.replace("ask_for_list", f"{ask_for}").replace("avl_info_list",
-                                                                                     f"{existing_info_of_str}"),
-        )
-        conversation = ConversationChain(
-            llm=llm,
-            verbose=False,
-            prompt=PROMPT,
-            memory=memories
-        )
-        # first check if user has given all the details
-        conv = conversation.predict(input=input)
+    conversation = ConversationChain(
+        llm=llm,
+        verbose=False,
+        prompt=PROMPT,
+        memory=memories,
+    )
 
-        message_history.add_user_message(input)
-        message_history.add_ai_message(conv)
+    conv = conversation.predict(input=input)
+    # message_history.add_user_message(input)
+    # message_history.add_ai_message(conv)
 
-        return conv
-
-    else:
-        PROMPT = PromptTemplate(
-            input_variables=["history", "input"],
-            template=_DEFAULT_TEMPLATE.replace("ask_for_list", f"{ask_for}").replace("avl_info_list",
-                                                                                     f"{existing_info_of_str}"),
-        )
-        conversation = ConversationChain(
-            llm=llm,
-            verbose=False,
-            prompt=PROMPT,
-            memory=memories,
-        )
-
-        conv = conversation.predict(input=input)
-        message_history.add_user_message(input)
-        message_history.add_ai_message(conv)
-
-        return conv
+    return conv
 
 
 st.title("LearnTube ChatBot🧑🏽‍")
