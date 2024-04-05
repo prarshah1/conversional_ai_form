@@ -124,12 +124,12 @@ def main():
         with st.chat_message("user"):
             st.markdown(user_input)
 
+        st.session_state.ask_for = filter_response(user_input)
         if st.session_state.ask_for:
             bot_question = ask_for_info(ask_for=st.session_state.ask_for, memories=st.session_state.memories,
                                         input=str(user_input))
             st.session_state.messages.append({"role": "assistant", "content": bot_question})
             write_message("assistant", bot_question)
-            st.session_state.ask_for = filter_response(user_input)
         else:
             st.stop()
 
