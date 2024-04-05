@@ -54,7 +54,7 @@ langsmith==0.1.39
 # networkx==3.2.1
 # nltk==3.8.1
 # numpy==1.26.4
-# openai==0.28.1
+openai==0.28.1
 # orjson==3.10.0
 # packaging==23.2
 # pandas==2.2.1
